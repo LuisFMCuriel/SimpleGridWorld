@@ -20,6 +20,10 @@ class Env:
 		self.isEnd = False
 		self.actions = {0:"up", 1:"down", 2:"left", 3:"right"}
 		self.deterministic = DETERMINISTIC
+		self.MDP = self.P()
+		self.Totalreward = 0
+		self.episodes = 0
+
 
 	def giveReward(self, state, past_state):
 		if state == WIN_STATE and past_state != WIN_STATE:
@@ -30,7 +34,7 @@ class Env:
 			return 0
 
 
-	def nxtPosition(self, action, state, prob=1):
+	def nxtPosition(self, action, state, prob="GoOn"):
 		"""
 		action: up, down, left, right
 		-------------
@@ -108,6 +112,7 @@ class Env:
 			for j in range(BOARD_COLS):
 				IdxToLoc[idx] = (i,j)
 				idx += 1
+		self.DicIdxtoLocation = IdxToLoc
 		return IdxToLoc
 
 	def showBoard(self):
@@ -130,7 +135,7 @@ class Env:
 
 	def P(self):
 		MDP = {}
-		Dic_location = self.IdxtoLocation
+		Dic_location = self.IdxtoLocation #TO FIX, change Dic_location for self.DicIdxtoLocation, it should be part of the environment
 		for state in range(BOARD_ROWS*BOARD_COLS):
 			MDP[state] = {}
 			for action in range(len(self.actions)):
@@ -156,6 +161,78 @@ class Env:
 						
 
 		return MDP
+
+	def reset(self):
+		self.state = START
+		self.isEnd = False
+		return self.state, self.isEnd
+
+	def step(self, action):
+		#Make a step in the environment. For deterministic game, simply make the desired action
+		#For a stochastic game, generate a random number and check what action corresponds to that number according to the games probs
+		if self.deterministic:
+			nxt_state = nxtPosition(action = action, state = self.state)
+		else:
+			n = np.random.random()
+			sum_ = 0
+			for p in self.probabilities:
+				if sum_ >= n or sum_ <= sum_+p:
+					prob_action = self.probabilities[p]
+					break
+				else:
+					sum_ += p
+		#Transform from coordinates of the game (.,.) to idx
+		try:
+			#If IdxtoLocation has already been built
+			idx_state = list(self.DicIdxtoLocation.keys())[list(self.DicIdxtoLocation.values()).index(self.state)]
+		except:
+			#If not, build it
+			dic = self.IdxtoLocation
+			idx_state = list(self.DicIdxtoLocation.keys())[list(self.DicIdxtoLocation.values()).index(self.state)]
+
+		action_idx = self.Actiontoidx(action, prob_action) #Transform probs of actions to definitive actions
+		
+		resulted_env_stats = self.MDP[idx_state][action_idx]
+		prob, next_state, reward, done = resulted_env_stats[0]
+		self.state = next_state
+		self.isEnd = done
+		self.Totalreward += reward
+		self.episodes += 1
+
+
+
+	def Actiontoidx(self, action, prob_action):
+		#Function to return the action depending of the probs of the environment
+		if self.deterministic:
+			return action
+		else:
+			if len(self.actions) == 4:
+				if prob_action == "GoOn":
+					return action
+				elif prob_action == "Reverse":
+					if action == 1:
+						return 0
+					elif action == 0:
+						return 1
+					elif action == 2:
+						return 3
+					else:
+						return 4
+				else:
+					return None
+			else:
+				if len(self.actions) == 2:
+					if prob_action == "GoOn":
+						return action
+					elif prob_action == "Reverse":
+						if action == 1:
+							return 0
+						else:
+							return 1
+					else:
+						return None
+
+
 
 """class Agent:
 
@@ -203,9 +280,14 @@ def print_policy(pi, P, action_symbols=('^', 'v', '<', '>'), n_cols=4, title='Po
         if (s + 1) % n_cols == 0: print("|")
 
 
-env = Env(START, probs = {0.5:"GoOn", 0.33:"Stay", 0.166:"Reverse"}, DETERMINISTIC=False)
+env = Env(START, probs = {0.5:"GoOn", 0.33:"Stay", 0.166:"Reverse"}, DETERMINISTIC=False) #TO FIX: the keys of the dict in probs should be the actions and the numbers should be the cases. The problem is all of them have the same prob, you are overwriting the dict
 env.showBoard()
 MDP = env.P()
+print(env.state)
+print(env.IdxtoLocation)
+env.step(1)
+print(env.state)
+
 V, pi = value_iteration(P=MDP)
 print(V)
 print_policy(pi, MDP, n_cols=BOARD_COLS)
