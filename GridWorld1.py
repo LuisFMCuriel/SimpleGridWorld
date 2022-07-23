@@ -1,6 +1,6 @@
 
 import numpy as np
-
+import random
 BOARD_ROWS = 4
 BOARD_COLS = 4	
 DETERMINISTIC = True
@@ -10,7 +10,7 @@ START = (0, 0)
 
 class Env:
 
-	def __init__(self, state, probs, DETERMINISTIC=False):
+	def __init__(self, state, probs, seed = 123, DETERMINISTIC=False):
 		self.state = state
 		self.board = np.zeros([BOARD_ROWS, BOARD_COLS])
 		self.board[WIN_STATE] = 2
@@ -23,7 +23,7 @@ class Env:
 		self.MDP = self.P()
 		self.Totalreward = 0
 		self.episodes = 0
-
+		self.seed = seed
 
 	def giveReward(self, state, past_state):
 		if state == WIN_STATE and past_state != WIN_STATE:
@@ -165,11 +165,12 @@ class Env:
 	def reset(self):
 		self.state = START
 		self.isEnd = False
-		return self.state, self.isEnd
+		return self.state
 
-	def step(self, action):
+	def step(self, action: int):
 		#Make a step in the environment. For deterministic game, simply make the desired action
 		#For a stochastic game, generate a random number and check what action corresponds to that number according to the games probs
+		#action (int): action to be made
 		if self.deterministic:
 			nxt_state = nxtPosition(action = action, state = self.state)
 		else:
@@ -194,14 +195,16 @@ class Env:
 		
 		resulted_env_stats = self.MDP[idx_state][action_idx]
 		prob, next_state, reward, done = resulted_env_stats[0]
-		self.state = next_state
+		past_state = action_idx
+		self.state = self.IdxtoLocation[next_state]
 		self.isEnd = done
 		self.Totalreward += reward
 		self.episodes += 1
+		return past_state, action, reward, next_state #Return experience tuple
+		#return next_state, self.isEndFunc(next_state), 
 
 
-
-	def Actiontoidx(self, action, prob_action):
+	def Actiontoidx(self, action: int, prob_action: str):
 		#Function to return the action depending of the probs of the environment
 		if self.deterministic:
 			return action
@@ -217,7 +220,7 @@ class Env:
 					elif action == 2:
 						return 3
 					else:
-						return 4
+						return 2
 				else:
 					return None
 			else:
@@ -232,20 +235,44 @@ class Env:
 					else:
 						return None
 
+	def set_seed(self, seed):
+		self.seed = seed
+		np.random.seed(seed)
 
 
-"""class Agent:
+class Agent:
 
-	def __init__(self, actions, state):
-		self.reward = 0
-		self.actions = actions
+	def __init__(self, actions, state, policy):
+		#Initialize the agent. For now, the agent has a defined policy (there is no learning here)
+		self.Accumulated_reward = 0
+		self.Nepisodes = 0
+		self.action_space = actions
 		self.state = state
-		self.memory = []
+		self.experience = []
+		self.policy = policy
 
 	def update_state(self, state):
+		#Update the state of the agent
 		self.state = state
 
-	def Make_action(self, policy):"""
+	def update_AccumulatedReward(self, reward):
+		#Update the accumulated reward of the agent
+		self.Accumulated_reward += reward
+
+	def update_lifetime(self):
+		#Update the episodes the agent has been active
+		self.Nepisodes += 1
+
+	def update_experience(self, state, action, reward, next_state):
+		#Update the entire experience tuple
+		self.experience.append((state, action, reward, next_state))
+		self.state = next_state
+		self.Accumulated_reward += reward
+		self.Nepisodes += 1
+
+	def Make_action(self, policy):
+		return policy(self.state)
+
 
 
 
@@ -280,17 +307,31 @@ def print_policy(pi, P, action_symbols=('^', 'v', '<', '>'), n_cols=4, title='Po
         if (s + 1) % n_cols == 0: print("|")
 
 
+def probability_success(env, pi, goal_state, n_episodes=100, max_steps=200):
+	random.seed(123); np.random.seed(123) #; env.seed(123)
+	results = []
+	for _ in range(n_episodes):
+		state, done, steps = env.reset(), False, 0
+		state = list(env.DicIdxtoLocation.keys())[list(env.DicIdxtoLocation.values()).index(state)]
+		while not done and steps < max_steps:
+			past_state, _, _, state = env.step(pi(state))
+			done = env.isEndFunc(env.DicIdxtoLocation[state], env.DicIdxtoLocation[past_state])
+			steps += 1
+		results.append(state == list(env.DicIdxtoLocation.values()).index(goal_state))
+	return np.sum(results)/len(results)
+
+
 env = Env(START, probs = {0.5:"GoOn", 0.33:"Stay", 0.166:"Reverse"}, DETERMINISTIC=False) #TO FIX: the keys of the dict in probs should be the actions and the numbers should be the cases. The problem is all of them have the same prob, you are overwriting the dict
-env.showBoard()
+#env.showBoard()
 MDP = env.P()
 print(env.state)
-print(env.IdxtoLocation)
-env.step(1)
-print(env.state)
+#print(env.IdxtoLocation)
+#env.step(1)
+#print(env.state)
 
 V, pi = value_iteration(P=MDP)
-print(V)
-print_policy(pi, MDP, n_cols=BOARD_COLS)
+#print(V)
+#print_policy(pi, MDP, n_cols=BOARD_COLS)
 #agent = Agent(env.actions, env.state)
 #print(policy)
 
