@@ -1,24 +1,19 @@
 
 import numpy as np
 import random
-BOARD_ROWS = 4
-BOARD_COLS = 4	
-DETERMINISTIC = True
-WIN_STATE = (3,3)
-LOSE_STATE = [(1,1), (1,3), (2,3), (3,0)]
-START = (0, 0)
+ 
 
 class Env:
 
-	def __init__(self, state, probs, seed = 123, DETERMINISTIC=False):
-		self.state = state
+	def __init__(self, probs, seed = 123, BOARD_ROWS = 4, BOARD_COLS = 4, START = (0,0), WIN_STATE = (3,3), \
+							 LOSE_STATE = [(1,1), (1,3), (2,3), (3,0)],  actions = {0:"up", 1:"down", 2:"left", 3:"right"}, DETERMINISTIC=False):
+		self.state = START
 		self.board = np.zeros([BOARD_ROWS, BOARD_COLS])
-		self.board[WIN_STATE] = 2
 		self.probabilities = probs
-		for i in LOSE_STATE:
-			self.board[i] = -1
+		self.WIN_STATE = WIN_STATE
+		self.LOSE_STATE = LOSE_STATE
 		self.isEnd = False
-		self.actions = {0:"up", 1:"down", 2:"left", 3:"right"}
+		self.actions = actions
 		self.deterministic = DETERMINISTIC
 		self.MDP = self.P()
 		self.Totalreward = 0
@@ -26,9 +21,9 @@ class Env:
 		self.seed = seed
 
 	def giveReward(self, state, past_state):
-		if state == WIN_STATE and past_state != WIN_STATE:
+		if state == self.WIN_STATE and past_state != self.WIN_STATE:
 			return 1
-		elif state in LOSE_STATE:
+		elif state in self.LOSE_STATE:
 			return 0#-1
 		else:
 			return 0
@@ -44,7 +39,7 @@ class Env:
 		return next position
 		"""
 		if self.deterministic:
-			if state == WIN_STATE or state in LOSE_STATE:
+			if state == self.WIN_STATE or state in self.LOSE_STATE:
 				return state
 			else:
 				if action == "up":
@@ -56,13 +51,13 @@ class Env:
 				else:
 					nxtState = (state[0], state[1] + 1)
 				# if next state legal
-				if (nxtState[0] >= 0) and (nxtState[0] <= BOARD_ROWS-1):
-					if (nxtState[1] >= 0) and (nxtState[1] <= BOARD_COLS-1):
+				if (nxtState[0] >= 0) and (nxtState[0] <= self.board.shape[0]-1):
+					if (nxtState[1] >= 0) and (nxtState[1] <= self.board.shape[1]-1):
 						#if nxtState != (1, 1):
 						return nxtState
 				return state
 		else: #If the environment is not deterministic
-			if state == WIN_STATE or state in LOSE_STATE:
+			if state == self.WIN_STATE or state in self.LOSE_STATE:
 				return state
 			else:
 				if prob == "GoOn":#Go to the intended state
@@ -75,8 +70,8 @@ class Env:
 					else:
 						nxtState = (state[0], state[1] + 1)
 					# if next state legal
-					if (nxtState[0] >= 0) and (nxtState[0] <= BOARD_ROWS-1):
-						if (nxtState[1] >= 0) and (nxtState[1] <= BOARD_COLS-1):
+					if (nxtState[0] >= 0) and (nxtState[0] <= self.board.shape[0]-1):
+						if (nxtState[1] >= 0) and (nxtState[1] <= self.board.shape[1]-1):
 							#if nxtState != (1, 1):
 							return nxtState
 					return state
@@ -90,8 +85,8 @@ class Env:
 					else:
 						nxtState = (state[0], state[1] + 1)
 					# if next state legal
-					if (nxtState[0] >= 0) and (nxtState[0] <= BOARD_ROWS-1):
-						if (nxtState[1] >= 0) and (nxtState[1] <= BOARD_COLS-1):
+					if (nxtState[0] >= 0) and (nxtState[0] <= self.board.shape[0]-1):
+						if (nxtState[1] >= 0) and (nxtState[1] <= self.board.shape[1]-1):
 							#if nxtState != (1, 1):
 							return nxtState
 					return state
@@ -99,7 +94,7 @@ class Env:
 					return state
 
 	def isEndFunc(self, state, past_state):
-		if (state == WIN_STATE) or (state in LOSE_STATE) or (past_state == WIN_STATE) or (past_state in LOSE_STATE):
+		if (state == self.WIN_STATE) or (state in self.LOSE_STATE) or (past_state == self.WIN_STATE) or (past_state in self.LOSE_STATE):
 			return True
 		else:
 			return False
@@ -108,19 +103,24 @@ class Env:
 	def IdxtoLocation(self):
 		IdxToLoc = {}
 		idx = 0
-		for i in range(BOARD_ROWS):
-			for j in range(BOARD_COLS):
+		for i in range(self.board.shape[0]):
+			for j in range(self.board.shape[1]):
 				IdxToLoc[idx] = (i,j)
 				idx += 1
 		self.DicIdxtoLocation = IdxToLoc
 		return IdxToLoc
 
 	def showBoard(self):
+		self.board = np.zeros_like(self.board)
+		self.board[self.WIN_STATE] = 2
 		self.board[self.state] = 1
-		for i in range(0, BOARD_ROWS):
+		for i in self.LOSE_STATE:
+			self.board[i] = -1
+
+		for i in range(0, self.board.shape[0]):
 			print('-----------------')
 			out = '| '
-			for j in range(0, BOARD_COLS):
+			for j in range(0, self.board.shape[1]):
 				if self.board[i, j] == 1:
 					token = '*'
 				if self.board[i, j] == 2:
@@ -136,7 +136,7 @@ class Env:
 	def P(self):
 		MDP = {}
 		Dic_location = self.IdxtoLocation #TO FIX, change Dic_location for self.DicIdxtoLocation, it should be part of the environment
-		for state in range(BOARD_ROWS*BOARD_COLS):
+		for state in range(self.board.shape[0]*self.board.shape[1]):
 			MDP[state] = {}
 			for action in range(len(self.actions)):
 				MDP[state][action] = []
@@ -195,12 +195,12 @@ class Env:
 		
 		resulted_env_stats = self.MDP[idx_state][action_idx]
 		prob, next_state, reward, done = resulted_env_stats[0]
-		past_state = action_idx
+		past_state = idx_state
 		self.state = self.IdxtoLocation[next_state]
 		self.isEnd = done
 		self.Totalreward += reward
 		self.episodes += 1
-		return past_state, action, reward, next_state #Return experience tuple
+		return past_state, action, reward, next_state, done #Return experience tuple
 		#return next_state, self.isEndFunc(next_state), 
 
 
@@ -290,6 +290,7 @@ def value_iteration(P, gamma=1.0, theta=1e-10):
 		#print(Q)
 		#print(V)
 		V = np.max(Q, axis=1)
+	print(Q)
 	pi = lambda s: {s:a for s, a in enumerate(np.argmax(Q, axis=1))}[s]
 	return V, pi
 
@@ -321,7 +322,7 @@ def probability_success(env, pi, goal_state, n_episodes=100, max_steps=200):
 	return np.sum(results)/len(results)
 
 
-env = Env(START, probs = {0.5:"GoOn", 0.33:"Stay", 0.166:"Reverse"}, DETERMINISTIC=False) #TO FIX: the keys of the dict in probs should be the actions and the numbers should be the cases. The problem is all of them have the same prob, you are overwriting the dict
+env = Env(probs = {0.5:"GoOn", 0.33:"Stay", 0.166:"Reverse"}, DETERMINISTIC=False) #TO FIX: the keys of the dict in probs should be the actions and the numbers should be the cases. The problem is all of them have the same prob, you are overwriting the dict
 #env.showBoard()
 MDP = env.P()
 print(env.state)
