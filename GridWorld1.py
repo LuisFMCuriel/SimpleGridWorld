@@ -1,6 +1,7 @@
 
 import numpy as np
 import random
+from itertools import cycle, count
  
 
 class Env:
@@ -8,6 +9,7 @@ class Env:
 	def __init__(self, probs, seed = 123, BOARD_ROWS = 4, BOARD_COLS = 4, START = (0,0), WIN_STATE = (3,3), \
 							 LOSE_STATE = [(1,1), (1,3), (2,3), (3,0)],  actions = {0:"up", 1:"down", 2:"left", 3:"right"}, DETERMINISTIC=False):
 		self.state = START
+		self.START = START
 		self.board = np.zeros([BOARD_ROWS, BOARD_COLS])
 		self.probabilities = probs
 		self.WIN_STATE = WIN_STATE
@@ -94,13 +96,26 @@ class Env:
 					return state
 
 	def isEndFunc(self, state, past_state):
+		#Function to determine if the game is over by either reaching the winning state or any loosing state
 		if (state == self.WIN_STATE) or (state in self.LOSE_STATE) or (past_state == self.WIN_STATE) or (past_state in self.LOSE_STATE):
 			return True
 		else:
 			return False
 
+	def LocationtoIdx(self, location):
+		#Function to convert location (row, col) to idx, e.g. 1
+		try:
+			#If IdxtoLocation has already been built
+			idx_state = list(self.DicIdxtoLocation.keys())[list(self.DicIdxtoLocation.values()).index(location)]
+		except:
+			#If not, build it
+			dic = self.IdxtoLocation
+			idx_state = list(self.DicIdxtoLocation.keys())[list(self.DicIdxtoLocation.values()).index(location)]
+		return idx_state
+
 	@property
 	def IdxtoLocation(self):
+		#Property of the class to convert an idx to location
 		IdxToLoc = {}
 		idx = 0
 		for i in range(self.board.shape[0]):
@@ -163,7 +178,7 @@ class Env:
 		return MDP
 
 	def reset(self):
-		self.state = START
+		self.state = self.START
 		self.isEnd = False
 		return self.state
 
@@ -273,6 +288,30 @@ class Agent:
 	def Make_action(self, policy):
 		return policy(self.state)
 
+	def generate_trajectory(self, pi, env, max_steps=200):
+		done, trajectory = False, []
+		while not done:
+			state = env.reset()
+			state = env.LocationtoIdx(state)
+			for t in count():
+				action = pi(state) 
+				_, _, reward, next_state, done = env.step(action)
+				print(action, state, next_state, done)
+				experience = (state, action, reward, next_state, done)
+				trajectory.append(experience)
+				if done:
+					break
+				if t >= max_steps - 1:
+					trajectory = []
+					break
+				state = next_state
+		return np.array(trajectory, np.object)
+
+	def generate_random_policy(self, actions, N_states):
+		#Generate a random policy according to the possible actions and number of states of the environment
+		random_actions = np.random.choice(actions, N_states)
+		return lambda s: {s:a for s, a in enumerate(random_actions)}[s]
+
 
 
 
@@ -290,7 +329,7 @@ def value_iteration(P, gamma=1.0, theta=1e-10):
 		#print(Q)
 		#print(V)
 		V = np.max(Q, axis=1)
-	print(Q)
+	#print(Q)
 	pi = lambda s: {s:a for s, a in enumerate(np.argmax(Q, axis=1))}[s]
 	return V, pi
 
@@ -315,8 +354,8 @@ def probability_success(env, pi, goal_state, n_episodes=100, max_steps=200):
 		state, done, steps = env.reset(), False, 0
 		state = list(env.DicIdxtoLocation.keys())[list(env.DicIdxtoLocation.values()).index(state)]
 		while not done and steps < max_steps:
-			past_state, _, _, state = env.step(pi(state))
-			done = env.isEndFunc(env.DicIdxtoLocation[state], env.DicIdxtoLocation[past_state])
+			past_state, _, _, state, done = env.step(pi(state))
+			#done = env.isEndFunc(env.DicIdxtoLocation[state], env.DicIdxtoLocation[past_state])
 			steps += 1
 		results.append(state == list(env.DicIdxtoLocation.values()).index(goal_state))
 	return np.sum(results)/len(results)
