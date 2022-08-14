@@ -2,7 +2,7 @@
 import numpy as np
 import random
 from itertools import cycle, count
- 
+from tqdm import tqdm
 
 class Env:
 
@@ -21,6 +21,7 @@ class Env:
 		self.Totalreward = 0
 		self.episodes = 0
 		self.seed = seed
+		self.observation_space_size = BOARD_ROWS * BOARD_COLS
 
 	def giveReward(self, state, past_state):
 		if state == self.WIN_STATE and past_state != self.WIN_STATE:
@@ -177,9 +178,15 @@ class Env:
 
 		return MDP
 
-	def reset(self):
-		self.state = self.START
-		self.isEnd = False
+	def reset(self, randomly = True):
+		if randomly:
+			self.isEnd = True
+			while self.isEnd:
+				self.state = (np.random.randint(self.board.shape[0]), np.random.randint(self.board.shape[1]))
+				#I will simulate that the agent was in neither on the past state so it doesn't overlap to any of the current holes or traps in the game
+				self.isEnd = self.isEndFunc(self.state, (self.board.shape[0]+1, self.board.shape[1]+1))
+		else:
+			self.state = self.START
 		return self.state
 
 	def step(self, action: int):
@@ -291,26 +298,86 @@ class Agent:
 	def generate_trajectory(self, pi, env, max_steps=200):
 		done, trajectory = False, []
 		while not done:
-			state = env.reset()
+			state = env.reset(True)
 			state = env.LocationtoIdx(state)
-			for t in count():
+			t = 0
+			while t < max_steps:
 				action = pi(state) 
 				_, _, reward, next_state, done = env.step(action)
-				print(action, state, next_state, done)
+				#print(action, state, next_state, done)
 				experience = (state, action, reward, next_state, done)
 				trajectory.append(experience)
 				if done:
 					break
 				if t >= max_steps - 1:
+					#I will make a new policy every time it get stuck
+					pi = self.generate_random_policy(self.action_space, env.board.shape[0]*env.board.shape[1])
 					trajectory = []
 					break
 				state = next_state
+				t += 1
 		return np.array(trajectory, np.object)
 
 	def generate_random_policy(self, actions, N_states):
 		#Generate a random policy according to the possible actions and number of states of the environment
 		random_actions = np.random.choice(actions, N_states)
 		return lambda s: {s:a for s, a in enumerate(random_actions)}[s]
+
+def decay_schedule(init_value, min_value, decay_ratio, max_steps, log_start=-2, log_base=10):
+    decay_steps = int(max_steps * decay_ratio)
+    rem_steps = max_steps - decay_steps
+    values = np.logspace(log_start, 0, decay_steps, base=log_base, endpoint=True)[::-1]
+    values = (values - values.min()) / (values.max() - values.min())
+    values = (init_value - min_value) * values + min_value
+    values = np.pad(values, (0, rem_steps), 'edge')
+    return values
+
+def ntd(pi, 
+        env, 
+        gamma=1.0,
+        init_alpha=0.5,
+        min_alpha=0.01,
+        alpha_decay_ratio=0.5,
+        n_step=3,
+        n_episodes=500):
+    nS = env.observation_space_size
+    V = np.zeros(nS, dtype=np.float64)
+    V_track = np.zeros((n_episodes, nS), dtype=np.float64)
+    discounts = np.logspace(0, n_step+1, num=n_step+1, base=gamma, endpoint=False)
+    alphas = decay_schedule(
+        init_alpha, min_alpha, 
+        alpha_decay_ratio, n_episodes)
+    for e in tqdm(range(n_episodes), leave=False):
+        state, done, path = env.reset(), False, []
+        state = list(env.DicIdxtoLocation.keys())[list(env.DicIdxtoLocation.values()).index(state)]
+        while not done or path is not None:
+            path = path[1:]
+            while not done and len(path) < n_step:
+                action = pi(state)
+                _,_,reward, next_state, done = env.step(action)
+                #next_state, reward, done, _ = env.step(action)
+                experience = (state, reward, next_state, done)
+                path.append(experience)
+                state = next_state
+                #state = list(env.DicIdxtoLocation.keys())[list(env.DicIdxtoLocation.values()).index(state)]
+                if done:
+                    break
+
+            n = len(path)
+            est_state = path[0][0]
+            rewards = np.array(path)[:,1]
+            partial_return = discounts[:n] * rewards
+            bs_val = discounts[-1] * V[next_state] * (not done)
+            ntd_target = np.sum(np.append(partial_return, bs_val))
+            ntd_error = ntd_target - V[est_state]
+            V[est_state] = V[est_state] + alphas[e] * ntd_error
+            if len(path) == 1 and path[0][3]:
+                path = None
+
+        V_track[e] = V
+    return V, V_track
+
+
 
 
 
